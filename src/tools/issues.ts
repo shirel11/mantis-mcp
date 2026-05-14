@@ -38,16 +38,30 @@ export function registerIssueTools(
     },
   );
 
+  const DEFAULT_LIST_PAGE_SIZE = 25;
+  const MAX_LIST_PAGE_SIZE = 100;
+  // Lightweight projection to keep list responses inside LLM token budgets.
+  // Each issue's history / notes / attachments / custom_fields / relationships
+  // can be huge; users fetch them per-issue with mantis_get_issue if needed.
+  const DEFAULT_LIST_SELECT =
+    "id,summary,status,priority,severity,handler,reporter,project,category,sticky,created_at,updated_at";
+
   server.tool(
     "mantis_list_issues",
     [
-      "List Mantis issues with optional filtering and pagination.",
-      "`filter_id` accepts a numeric custom filter id or one of the convenience values:",
-      "  - 'assigned'   : issues assigned to the authenticated user",
-      "  - 'reported'   : issues reported by the authenticated user",
-      "  - 'monitored'  : issues monitored by the authenticated user",
-      "  - 'unassigned' : issues with no handler",
-      "`project_id` limits to a project. `select` is a comma-separated field list.",
+      "List Mantis issues. **PAGINATED** — always check the `pagination.has_more` field in the response and call again with the next `page` number if you need more results. Do NOT assume a single call returns every issue.",
+      "",
+      "Defaults: `page=1`, `page_size=25`. Each issue is returned with a lightweight projection (id, summary, status, priority, severity, handler, reporter, project, category, sticky, created_at, updated_at) so responses stay small.",
+      "",
+      "Parameters:",
+      "  - project_id : limit to one project",
+      "  - filter_id  : numeric custom filter id, or one of: 'assigned' | 'reported' | 'monitored' | 'unassigned'",
+      "  - page       : 1-based page number (default 1)",
+      "  - page_size  : items per page, max 100 (default 25)",
+      "  - select     : comma-separated field list — overrides the lightweight default",
+      "  - full       : if true, fetch every field (use sparingly — payload can be very large)",
+      "",
+      "To see all fields of a specific issue (description, notes, history, attachments, ...), call `mantis_get_issue` with that issue's id.",
     ].join("\n"),
     {
       project_id: z.number().int().positive().optional(),
@@ -57,20 +71,60 @@ export function registerIssueTools(
         .describe(
           "Numeric custom filter id, or one of: assigned | reported | monitored | unassigned",
         ),
-      page: z.number().int().positive().optional(),
-      page_size: z.number().int().positive().max(100).optional(),
-      select: z.string().optional(),
+      page: z
+        .number()
+        .int()
+        .positive()
+        .default(1)
+        .describe("1-based page number (default 1)"),
+      page_size: z
+        .number()
+        .int()
+        .positive()
+        .max(MAX_LIST_PAGE_SIZE)
+        .default(DEFAULT_LIST_PAGE_SIZE)
+        .describe(`Items per page; max ${MAX_LIST_PAGE_SIZE}, default ${DEFAULT_LIST_PAGE_SIZE}`),
+      select: z
+        .string()
+        .optional()
+        .describe(
+          "Comma-separated fields to return. Overrides the lightweight default projection.",
+        ),
+      full: z
+        .boolean()
+        .optional()
+        .describe(
+          "If true, fetch every field instead of the lightweight projection. Use sparingly.",
+        ),
     },
-    async ({ project_id, filter_id, page, page_size, select }) => {
+    async ({ project_id, filter_id, page, page_size, select, full }) => {
       try {
-        const data = await client.get(`/api/rest/issues`, {
+        const effectiveSelect = full ? undefined : (select ?? DEFAULT_LIST_SELECT);
+        const data = await client.get<
+          { issues?: unknown[] } & Record<string, unknown>
+        >(`/api/rest/issues`, {
           project_id,
           filter_id,
           page,
           page_size,
-          select,
+          select: effectiveSelect,
         });
-        return jsonResult(data);
+        const issues = Array.isArray(data?.issues) ? data.issues : [];
+        const hasMore = issues.length === page_size;
+        const result = {
+          pagination: {
+            page,
+            page_size,
+            returned: issues.length,
+            has_more: hasMore,
+            next_page: hasMore ? page + 1 : null,
+            hint: hasMore
+              ? `More results may exist. Call mantis_list_issues again with page=${page + 1} (and the same other parameters) to fetch the next batch.`
+              : "This is the last page (returned fewer items than page_size).",
+          },
+          issues,
+        };
+        return jsonResult(result);
       } catch (err) {
         return errorResult(err);
       }

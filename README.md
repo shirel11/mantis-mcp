@@ -13,16 +13,42 @@ Built directly from the official [Mantis Bug Tracker Postman collection](https:/
 
 ---
 
-## Quick start
+## Prerequisites
 
-The fastest way — no install, just point your MCP client at `npx`:
+- Node.js ≥ 18 (with `npx` available — bundled with npm).
+- A Mantis Bug Tracker instance and an **API token**. Generate one in Mantis: *My Account → API Tokens → Create*.
+
+Replace `https://your-instance.mantishub.io` and `your-api-token` in the snippets below with your real values. Switch `MANTIS_MODE=read` → `MANTIS_MODE=readwrite` when you want write operations enabled.
+
+---
+
+## MCP Client Configuration
+
+### Claude Code
+
+```bash
+claude mcp add mantis --scope user \
+  -e MANTIS_URL=https://your-instance.mantishub.io \
+  -e MANTIS_TOKEN=your-api-token \
+  -e MANTIS_MODE=read \
+  -- npx -y @shirelshitrit/mantis-mcp@latest
+```
+
+Verify with `claude mcp list`. Restart Claude Code so the new server is picked up.
+
+### Claude Desktop
+
+Edit `claude_desktop_config.json`:
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "mantis": {
       "command": "npx",
-      "args": ["-y", "@shirelshitrit/mantis-mcp"],
+      "args": ["-y", "@shirelshitrit/mantis-mcp@latest"],
       "env": {
         "MANTIS_URL": "https://your-instance.mantishub.io",
         "MANTIS_TOKEN": "your-api-token",
@@ -33,9 +59,55 @@ The fastest way — no install, just point your MCP client at `npx`:
 }
 ```
 
-Drop this into your Claude Desktop config (`claude_desktop_config.json`) or Claude Code MCP config (`.mcp.json`), restart the client, and the LLM now has all `mantis_*` tools available.
+Quit Claude Desktop completely (from the tray, not just the window) and reopen.
 
-To enable write operations, change `MANTIS_MODE` to `readwrite` and restart.
+### Cursor
+
+Edit `~/.cursor/mcp.json` (or *Settings → MCP → Add new MCP server*):
+
+```json
+{
+  "mcpServers": {
+    "mantis": {
+      "command": "npx",
+      "args": ["-y", "@shirelshitrit/mantis-mcp@latest"],
+      "env": {
+        "MANTIS_URL": "https://your-instance.mantishub.io",
+        "MANTIS_TOKEN": "your-api-token",
+        "MANTIS_MODE": "read"
+      }
+    }
+  }
+}
+```
+
+### Gemini CLI
+
+```bash
+gemini mcp add mantis \
+  -e MANTIS_URL=https://your-instance.mantishub.io \
+  -e MANTIS_TOKEN=your-api-token \
+  -e MANTIS_MODE=read \
+  -- npx -y @shirelshitrit/mantis-mcp@latest
+```
+
+### VS Code (GitHub Copilot Chat / agents)
+
+```bash
+code --add-mcp '{"name":"mantis","command":"npx","args":["-y","@shirelshitrit/mantis-mcp@latest"],"env":{"MANTIS_URL":"https://your-instance.mantishub.io","MANTIS_TOKEN":"your-api-token","MANTIS_MODE":"read"}}'
+```
+
+Or edit `.vscode/mcp.json` in your workspace.
+
+### Codex CLI / other JSON-config clients
+
+Add to your client's MCP config file (path varies by client) using the same JSON shape shown in the Claude Desktop section above.
+
+---
+
+## Switching modes
+
+To enable write operations (create/update/delete issues, projects, users, attachments, etc.) change `MANTIS_MODE` from `read` to `readwrite` in your config, then restart the client. In `read` mode the LLM cannot see write tools at all — strongest safety guarantee.
 
 ---
 
@@ -51,21 +123,19 @@ To enable write operations, change `MANTIS_MODE` to `readwrite` and restart.
 
 ---
 
-## Installation options
+## Alternative install methods
 
-### Option A — `npx` (recommended)
+The CLI snippets above use `npx -y` so the latest version is fetched on demand. If you prefer not to use `npx`:
 
-No install needed. Use the config snippet above. `npx -y` always fetches the latest published version.
-
-### Option B — global install
+### Global install
 
 ```bash
 npm install -g @shirelshitrit/mantis-mcp
 ```
 
-Then in your MCP client config use `"command": "mantis-mcp"` (instead of `npx`).
+Then in your client config replace `"command": "npx", "args": ["-y", "@shirelshitrit/mantis-mcp@latest"]` with `"command": "mantis-mcp", "args": []`.
 
-### Option C — local clone
+### Local clone (for development)
 
 ```bash
 git clone https://github.com/shirel11/mantis-mcp.git
@@ -78,13 +148,7 @@ Then use `"command": "node"`, `"args": ["/absolute/path/to/dist/index.js"]`.
 
 ---
 
-## Configuration
-
-### Get a Mantis API token
-
-In Mantis: **My Account → API Tokens → Create**. Copy the token; you cannot view it again later.
-
-### Environment variables
+## Environment variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
