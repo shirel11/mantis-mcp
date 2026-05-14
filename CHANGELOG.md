@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-14
+
+### Fixed
+- `mantis_list_issues` was returning tool results too large for the LLM
+  context budget even with pagination, because Mantis returns full nested
+  enum objects (`{id, name, label, color, real_name, email, ...}`) for
+  fields like `status`, `priority`, `handler`, `reporter`, `project`,
+  `category` regardless of the `select` parameter.
+
+### Changed
+- In non-`full` mode, `mantis_list_issues` now post-processes each issue:
+  nested ref objects are flattened to their `name` string and arrays of
+  refs (e.g. `tags`) to arrays of strings. Result: a typical compact
+  issue is ~300 bytes instead of ~650, so a page of 100 fits comfortably
+  in LLM tool-result limits.
+- Tool description for `mantis_list_issues` updated to document the
+  compact format and discourage `full: true` for list calls.
+
 ## [0.1.0] - 2026-05-14
 
 ### Added
@@ -28,5 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README includes one-liner install snippets for Claude Code, Claude Desktop,
   Cursor, Gemini CLI, and VS Code.
 
-[Unreleased]: https://github.com/shirel11/mantis-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/shirel11/mantis-mcp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/shirel11/mantis-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/shirel11/mantis-mcp/releases/tag/v0.1.0

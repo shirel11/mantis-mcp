@@ -5,6 +5,7 @@ import type { Mode } from "../config.js";
 import {
   AttachmentInput,
   Ref,
+  compactIssue,
   errorResult,
   jsonResult,
 } from "./_helpers.js";
@@ -51,17 +52,19 @@ export function registerIssueTools(
     [
       "List Mantis issues. **PAGINATED** — always check the `pagination.has_more` field in the response and call again with the next `page` number if you need more results. Do NOT assume a single call returns every issue.",
       "",
-      "Defaults: `page=1`, `page_size=25`. Each issue is returned with a lightweight projection (id, summary, status, priority, severity, handler, reporter, project, category, sticky, created_at, updated_at) so responses stay small.",
+      "Each issue is returned in a **COMPACT** format: nested enum objects (status/priority/severity/handler/reporter/project/category/resolution/view_state) are flattened to their `name` string, so `\"handler\": \"shirels\"` instead of `\"handler\": {id, name, real_name, email}`. This keeps the payload inside LLM token limits.",
+      "",
+      "Defaults: `page=1`, `page_size=25`. Lightweight projection: id, summary, status, priority, severity, handler, reporter, project, category, sticky, created_at, updated_at.",
       "",
       "Parameters:",
       "  - project_id : limit to one project",
       "  - filter_id  : numeric custom filter id, or one of: 'assigned' | 'reported' | 'monitored' | 'unassigned'",
       "  - page       : 1-based page number (default 1)",
-      "  - page_size  : items per page, max 100 (default 25)",
-      "  - select     : comma-separated field list — overrides the lightweight default",
-      "  - full       : if true, fetch every field (use sparingly — payload can be very large)",
+      "  - page_size  : items per page, max 100 (default 25). Stick to small pages and iterate — large pages risk truncation.",
+      "  - select     : comma-separated top-level field list — overrides the lightweight default",
+      "  - full       : if true, fetch every field AND skip the compact-flattening. Use only for one specific issue at a time; for lists prefer the default.",
       "",
-      "To see all fields of a specific issue (description, notes, history, attachments, ...), call `mantis_get_issue` with that issue's id.",
+      "To see ALL fields of a specific issue (description, notes, history, attachments, custom_fields, ...), call `mantis_get_issue` with that issue's id — do NOT use `full: true` on a list.",
     ].join("\n"),
     {
       project_id: z.number().int().positive().optional(),
@@ -109,7 +112,13 @@ export function registerIssueTools(
           page_size,
           select: effectiveSelect,
         });
-        const issues = Array.isArray(data?.issues) ? data.issues : [];
+        const rawIssues = Array.isArray(data?.issues) ? data.issues : [];
+        // In non-full mode, flatten Mantis's nested enum objects
+        // (status/priority/handler/project/...) down to their `name`. This is
+        // critical: without it, even a page of 25 issues can blow past the
+        // LLM tool-result budget because Mantis returns full nested refs even
+        // when `select` requested only the parent field name.
+        const issues = full ? rawIssues : rawIssues.map(compactIssue);
         const hasMore = issues.length === page_size;
         const result = {
           pagination: {
